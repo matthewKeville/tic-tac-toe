@@ -1,3 +1,4 @@
+
 const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera( 
@@ -14,6 +15,8 @@ renderer.setSize(
 );
 
 document.body.appendChild( renderer.domElement );
+
+let controls = new THREE.OrbitControls(camera,renderer.domElement);
 
 const light = new THREE.AmbientLight( 0x404040);
 scene.add(light);
@@ -55,6 +58,8 @@ scene.add(kline);
 
 //camera.translateX(200);
 camera.translateY(500);
+//camera.translateY(10);
+//camera.translateZ(500);
 //camera.translateZ(250);
 //camera.translateX(250);
 camera.lookAt(0,0);
@@ -233,6 +238,7 @@ function toCylinder(x,y,z) {
   return res;
 }
 
+/*
 function toTorusFromCylinder(x,y,z) {
   let theta = (-z/zrange)*2*Math.PI + Math.PI/2;
   let radius = (zrange/(2*Math.PI));
@@ -244,6 +250,90 @@ function toTorusFromCylinder(x,y,z) {
   ]
   return res;
 }
+*/
+
+
+function toTorusFromCylinder(x,y,z) {
+  let theta = (-z/zrange)*2*Math.PI - Math.PI;
+  //let radius = (zrange/(2*Math.PI)); //base radius
+                                     //center points of torus
+  // We will use the cylindrical slice coplanar to x-y axis as a basis
+  // or revolution for all other points. We find a rotation of a point
+  // in this slice in terms of x and y, which we rotate about (z %) theta
+  //
+
+  // R_theta = [ cos t   -sin t]  v = [ vx
+  //           [ sin t   cos t ]        vy ]
+  //
+  // R_theta v = [ vx * cos t + vy * - sin t ]
+  //               vx * sin t + vy *   cos t 
+
+
+  //give a default toroidal radius
+  let r1 = 200;
+
+  //basis slice on xz axis
+  let tempz = 0;
+  let tempx = -r1 + x;
+
+
+  //rotate basis by angle given by z
+  let rotTempx = tempx * Math.cos(theta) + tempz * -Math.sin(theta);
+  let rotTempz = tempx * Math.sin(theta) + tempz * Math.cos(theta);
+
+
+  //y is no constant
+  //x and z change as they wrap around y axis
+  let res = [ rotTempx,
+              y,
+              rotTempz
+  ]
+  return res;
+}
+
+
+
+
+// X - shape construction 
+// i
+/*
+const xShape = new THREE.Shape();
+
+xShape.moveTo( 25, 25 );
+xShape.bezierCurveTo( 25, 25, 20, 0, 0, 0 );
+xShape.bezierCurveTo( - 30, 0, - 30, 35, - 30, 35 );
+xShape.bezierCurveTo( - 30, 55, - 10, 77, 25, 95 );
+xShape.bezierCurveTo( 60, 77, 80, 55, 80, 35 );
+xShape.bezierCurveTo( 80, 35, 80, 0, 50, 0 );
+xShape.bezierCurveTo( 35, 0, 25, 25, 25, 25 );
+
+const extrudeSettings = { depth: 8, bevelEnabled: true, bevelSegments: 2, steps: 2, bevelSize: 1, bevelThickness: 1 };
+
+const xgeometry = new THREE.ExtrudeGeometry( xShape, extrudeSettings );
+
+const xmesh = new THREE.Mesh( xgeometry, new THREE.MeshPhongMaterial() );
+scene.add(xmesh);
+*/
+
+
+// X - temp
+const xGeometry = new THREE.PlaneGeometry(100,100,50);
+const xMat = new THREE.MeshBasicMaterial( { color : 0xffff00 , side : THREE.DoubleSide});
+const xPlane = new THREE.Mesh( xGeometry , xMat );
+xPlane.geometry.rotateX(Math.PI/2);
+scene.add( xPlane );
+
+// O - shape construction 
+/*
+const ringGeometry = new THREE.RingGeometry( 90, 100, 8 );
+const rmat = new THREE.MeshBasicMaterial( { color: 0xffffff, side: THREE.DoubleSide } );
+const o00 = new THREE.Mesh( ringGeometry, rmat );
+o00.rotateX(-Math.PI/2);
+scene.add( o00 );
+*/
+
+
+
 
 
 const positions = geom.attributes.position.array;
@@ -275,6 +365,23 @@ for ( let i = 0; i < positions.length/3; i++) {
 
 console.log(S);
 console.log(SF_PC);
+
+//transformations of o00
+console.log(xPlane.geometry.attributes.position.array);
+let x_S =  xPlane.geometry.attributes.position.array.map((x) => x);
+console.log(xPlane);
+
+let x_S_PC = x_S.map((x) => x);
+//O plane -> O cylinder
+for ( let i = 0; i < x_S.length/3; i++) {
+  let cyl = toCylinder(x_S[3*i],x_S[3*i +1],x_S[3*i+2]);
+  x_S_PC[3*i] = cyl[0];
+  x_S_PC[3*i + 1] = cyl[1];
+  x_S_PC[3*i + 2] = cyl[2];
+}
+
+console.log(x_S_PC);
+
 
 
 
@@ -320,7 +427,46 @@ function cylinderTransform(t) {
           positions[3*i]     =  xn;
           positions[3*i + 1] =  yn;
           positions[3*i + 2] =  zn;
+
       }
+      //experiment for transforming o00 at the same time
+      for ( let i = 0; i < x_S.length/3; i++) {
+
+        //find (x,y)'s point in starting image
+        let x = x_S[3*i];
+        let y = x_S[3*i + 1];
+        let z = x_S[3*i + 2];
+
+        //find (x,y)'s point in final image SF
+        let xf = x_S_PC[3*i];
+        let yf = x_S_PC[3*i + 1];
+        let zf = x_S_PC[3*i + 2];
+
+        //interpolate a line between x,y,z and xf,yf,zf
+          //find distance vector
+          let xd = xf - x;
+          let yd = yf - y;
+          let zd = zf - z;
+          //draw distance vectors for debug perspective
+          var xgeo = new THREE.BufferGeometry();
+          var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
+          xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
+          var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
+          var line = new THREE.Line( xgeo , matx );
+          scene.add(line);
+
+          let xn = x + ( (xd) * t);
+          let yn = y + ( (yd) * t);
+          let zn = z + ( (zd) * t);
+          xPlane.geometry.attributes.position.array[3*i]     =  xn;
+          xPlane.geometry.attributes.position.array[3*i + 1] =  yn;
+          xPlane.geometry.attributes.position.array[3*i + 2] =  zn;
+
+
+      }
+
+      xPlane.geometry.attributes.position.needsUpdate = true;
+
 }
 
 function identity(t) {
@@ -379,8 +525,8 @@ let lastStep = performance.now();
 let dir = 1;
 let transformCycle = [ 
   { kind : cylinderTransform , dir: 1 },
-  { kind : torusTransform    , dir: 1 },
-  { kind : torusTransform    , dir: -1},
+//  { kind : torusTransform    , dir: 1 },
+// { kind : torusTransform    , dir: -1},
   { kind : cylinderTransform , dir: -1},
 ];
 
@@ -389,7 +535,30 @@ let transformCycle = [
 let transformIndex = 0;
 let transform = identity;
 
+//Ray casting
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function mouseMove(event) {
+  pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+  pointer.y = ( event.clientY / window.innerHeight) * 2 - 1;
+}
+
+window.onmousemove = mouseMove;
+
+function cast() {
+raycaster.setFromCamera( pointer , camera);
+let intersections = raycaster.intersectObjects( scene.children );
+for ( let i = 0; i < intersections.length; i++) {
+  console.log( intersections[i]);
+}
+}
+
+
+
 window.onkeydown = function (key) {
+  //cycle transformation
+  //spacebar
   if (key.keyCode === 32) {
     if ( ti == tsteps ) {
       ti = 0;
@@ -398,6 +567,11 @@ window.onkeydown = function (key) {
       dir = tci.dir;
       transformIndex = (transformIndex + 1) % transformCycle.length;
     }
+  }
+  //enter
+  if(key.keyCode === 13) {
+    console.log("enter hit");
+    cast();
   }
 }
 
