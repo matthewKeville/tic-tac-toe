@@ -70,10 +70,10 @@ let triangles = spots* (4**granularity) /2; //triangles per spot
 
 //dimensions of spot space / (tic-toe) board
 
-let xmax = 100;
+let xmax = 200;
 let xmin = -xmax;
 let xrange = xmax - xmin;
-let zmax = 100;
+let zmax = 200;
 let zmin = -zmax;
 let zrange = zmax - zmin;
 
@@ -260,77 +260,6 @@ function toCylinder(x,y,z) {
 }
 
 
-function toMobiusFromPlane(x,y,z) {
-  //angle x maps to in cylinder
-  // -xr/2 --- x --- xr/2 =>  3PI/2 ----- theta ----- -PI/2
-  let theta = (-x/xrange)*2*Math.PI + Math.PI/2;
-
-  let radius = 3*(xrange/(2*Math.PI));
-  // C = 2*PI*r => r = C/(2*PI)
-  
-  //experimental
-  //since we wish to use this to map extruded geometry (tiles)
-  //we define a special case in the input space ( y != 0 )
-  //when this is the case, we modify the output vector by displacing it 
-  //that amount in the normal direction
-  
-  //as the planar surface has y = 0 , nonzero y's must be for transforming tiles
-
-  let tanx = -radius*Math.sin(theta);
-  let tany = radius*Math.cos(theta);
-
-  let normalx = tany;
-  let normaly = -1*tanx;
-
-  //normalize normal vector
-  let nnorm = Math.sqrt( normalx**2 +  normaly**2 );
-
-  let res = [];
-  //we have to rotate the calculated points about the tangent axis of
-  //the point in revolution
-
-  //create a vector 3 of the point
-  //let point = new THREE.Vector3( radius*Math.cos(theta) , radius*Math.sin(theta) , z );
-  let point = new THREE.Vector3( radius*Math.cos(theta),radius*Math.sin(theta), z );
-  let rotAxis = (new THREE.Vector3( tanx, tany,0));
-  let rotNorm = (rotAxis).clone().normalize();
-  let rotAxisStart = new THREE.Vector3(radius*Math.cos(theta),radius*Math.sin(theta),0);
-  /*
-  console.log(rotAxis);
-  console.log(rotNorm);
-  */
-  point.sub(rotAxisStart);
-  point.applyAxisAngle(rotNorm,(Math.abs((theta+Math.PI/2))/15));
-  //point.applyAxisAngle(rotNorm,((theta+Math.PI/2))/15);
-  point.add(rotAxisStart);
-
-
-  let twists = 1;
-  //rotate point about tangent axis
-
-  if ( y == 0 ) {
-    //add the offset rotation to the original point mapping
-    res = [ point.x,
-            point.y,
-            point.z
-              ]
-  //extruded geometry
-  } else {
-    /*
-    let exn =
-    let exy =
-    let exz =
-    */
-    res = [     point.x + y*normalx/nnorm,
-                point.y + y*normaly/nnorm,
-                point.z
-              ]
-  }
-  return res;
-}
-
-
-
 
 function toTorusFromCylinder(x,y,z) {
   let theta = (-z/zrange)*2*Math.PI - Math.PI;
@@ -394,9 +323,6 @@ let SF_PC = positions.map((x) => x);
 // Torus Vertex data
 let SF_CT = positions.map((x) => x);
 
-// Mobius vertex data
-let SF_PM = positions.map((x) => x);
-
 // Calculate Cylinder vertex data by applying plane
 // to cylinder transformation
 for ( let i = 0; i < positions.length/3; i++) {
@@ -404,16 +330,6 @@ for ( let i = 0; i < positions.length/3; i++) {
   SF_PC[3*i] = cyl[0];
   SF_PC[3*i + 1] = cyl[1];
   SF_PC[3*i + 2] = cyl[2];
-}
-
-
-// Calculate Mobius vertex data by applying plane
-// to mobius transformation
-for ( let i = 0; i < positions.length/3; i++) {
-  let mob = toMobiusFromPlane(S[3*i],S[3*i +1],S[3*i+2]);
-  SF_PM[3*i] = mob[0];
-  SF_PM[3*i + 1] = mob[1];
-  SF_PM[3*i + 2] = mob[2];
 }
 
 // Calculate Torus vertex data by applying cylinder
@@ -454,34 +370,15 @@ xPlanes.forEach( xp => {
     to[3*i + 2] = tor[2];
   }
 
-  let mo = pos.map((x) => x);
-  for ( let i = 0; i < pos.length/3; i++) {
-    let mob = toMobiusFromPlane(pos[3*i],pos[3*i +1],pos[3*i+2]);
-    mo[3*i] = mob[0];
-    mo[3*i + 1] = mob[1];
-    mo[3*i + 2] = mob[2];
-  }
-
   let cache = {
     mesh     : xp,
     plane    : pl,
     cylinder : cy,
-    torus    : to,
-    mobius   : mo
-
+    torus    : to
   }
   xPlanesGeoCache.push(cache);
 
 });
-
-
-//hide xPlanes
-/*
-xPlanes.forEach( x => {
-  x.visible = false;
-});
-*/
-
 
 //console.log(xPlanesGeoCache);
 
@@ -713,100 +610,6 @@ function torusTransform(t) {
 
 
 
-
-// t : 0 to 1
-function mobiusTransform(t) {
-      //transform all points one time step
-			for ( let i = 0; i < positions.length/3; i++) {
-      
-        //find (x,y)'s point in starting image
-        let x = S[3*i];
-        let y = S[3*i + 1];
-        let z = S[3*i + 2];
-
-        //find (x,y)'s point in final image SF
-        let xf = SF_PM[3*i];
-        let yf = SF_PM[3*i + 1];
-        let zf = SF_PM[3*i + 2];
-
-        //interpolate a line between x,y,z and xf,yf,zf
-          //find distance vector
-          let xd = xf - x;
-          let yd = yf - y;
-          let zd = zf - z;
-          //draw distance vectors for debug perspective
-          /*
-          var xgeo = new THREE.BufferGeometry();
-          var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-          xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-          var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-          var line = new THREE.Line( xgeo , matx );
-          scene.add(line);
-          */
-
-          let xn = x + ( (xd) * t);
-          let yn = y + ( (yd) * t);
-          let zn = z + ( (zd) * t);
-          positions[3*i]     =  xn;
-          positions[3*i + 1] =  yn;
-          positions[3*i + 2] =  zn;
-
-      }
-
-
-      xPlanesGeoCache.forEach( xp => {
-
-        for ( let i = 0; i < xp.mesh.geometry.attributes.position.array.length/3; i++) {
-
-          //find (x,y)'s point in starting image
-          let x = xp.plane[3*i];
-          let y = xp.plane[3*i + 1];
-          let z = xp.plane[3*i + 2];
-
-          //find (x,y)'s point in final image SF
-          let xf = xp.mobius[3*i];
-          let yf = xp.mobius[3*i + 1];
-          let zf = xp.mobius[3*i + 2];
-
-          //interpolate a line between x,y,z and xf,yf,zf
-            //find distance vector
-            let xd = xf - x;
-            let yd = yf - y;
-            let zd = zf - z;
-
-            //draw distance vectors for debug perspective
-            /*
-            var xgeo = new THREE.BufferGeometry();
-            var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-            xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-            var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-            var line = new THREE.Line( xgeo , matx );
-            scene.add(line);
-            */
-
-            let xn = x + ( (xd) * t);
-            let yn = y + ( (yd) * t);
-            let zn = z + ( (zd) * t);
-            xp.mesh.geometry.attributes.position.array[3*i]     =  xn;
-            xp.mesh.geometry.attributes.position.array[3*i + 1] =  yn;
-            xp.mesh.geometry.attributes.position.array[3*i + 2] =  zn;
-
-
-        }
-
-        xp.mesh.geometry.attributes.position.needsUpdate = true;
-        xp.mesh.geometry.computeBoundingSphere();
-        xp.mesh.geometry.computeBoundingBox();
-      });
-
-}
-
-
-
-
-
-
-
 //Ray casting
 const raycaster = new THREE.Raycaster();
 raycaster.params.Line.threshold = 0;
@@ -902,15 +705,10 @@ let tsteps = 20;
 let lastStep = performance.now();
 let dir = 1;
 let transformCycle = [ 
-  { kind : mobiusTransform    , dir: 1 },
-  { kind : mobiusTransform    , dir: -1},
   { kind : cylinderTransform , dir: 1 },
-  { kind : cylinderTransform , dir: -1 },
-  /*
   { kind : torusTransform    , dir: 1 },
   { kind : torusTransform    , dir: -1},
   { kind : cylinderTransform , dir: -1},
-  */
 ];
 
 
