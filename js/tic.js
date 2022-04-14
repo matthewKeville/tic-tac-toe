@@ -63,7 +63,7 @@ camera.lookAt(0,0);
 //////////////////////////////
 
 //spots must be perfect square
-let spr = 5; //spot base
+let spr = 3; //spot base
 let spots = spr**2; //total spots ( a square number )
 let granularity = 10; //determine resolution of individual spots
 let triangles = spots* (4**granularity) /2; //triangles per spot
@@ -265,29 +265,29 @@ function toMobiusFromPlane(x,y,z) {
   // -xr/2 --- x --- xr/2 =>  3PI/2 ----- theta ----- -PI/2
   let theta = (-x/xrange)*2*Math.PI + Math.PI/2;
 
-  let radius = 3*(xrange/(2*Math.PI));
-  // C = 2*PI*r => r = C/(2*PI)
+  //scale radius to give space for twisting to not self-intersect
+  let radius = 5*(xrange/(2*Math.PI));
   
-  //experimental
-  //since we wish to use this to map extruded geometry (tiles)
-  //we define a special case in the input space ( y != 0 )
-  //when this is the case, we modify the output vector by displacing it 
-  //that amount in the normal direction
-  
-  //as the planar surface has y = 0 , nonzero y's must be for transforming tiles
-
+  //tangent vector of mapping to circle
   let tanx = -radius*Math.sin(theta);
   let tany = radius*Math.cos(theta);
 
+  //normal vector of circle mapping
   let normalx = tany;
   let normaly = -1*tanx;
 
   //normalize normal vector
   let nnorm = Math.sqrt( normalx**2 +  normaly**2 );
 
-  let res = [];
   //we have to rotate the calculated points about the tangent axis of
-  //the point in revolution
+  //the circle mapping, i.e. for each point on the circle there is a line
+  //of points along the z axis that need to twist about the tangent axis
+
+  //mapping for twists on circular path
+  //Phi maps -x to 0 and x to PI where 0-> PI/2
+  let phi = (x/xrange)*(Math.PI) + Math.PI/2;
+  //turns in mobdius strip
+  let turns = 1;
 
   //create a vector 3 of the point
   //let point = new THREE.Vector3( radius*Math.cos(theta) , radius*Math.sin(theta) , z );
@@ -295,19 +295,19 @@ function toMobiusFromPlane(x,y,z) {
   let rotAxis = (new THREE.Vector3( tanx, tany,0));
   let rotNorm = (rotAxis).clone().normalize();
   let rotAxisStart = new THREE.Vector3(radius*Math.cos(theta),radius*Math.sin(theta),0);
-  /*
-  console.log(rotAxis);
-  console.log(rotNorm);
-  */
+
+  //rotate the points in the normal plane against the tangent axis
   point.sub(rotAxisStart);
-  point.applyAxisAngle(rotNorm,(Math.abs((theta+Math.PI/2))/15));
-  //point.applyAxisAngle(rotNorm,((theta+Math.PI/2))/15);
+  point.applyAxisAngle(rotNorm,turns*phi);
   point.add(rotAxisStart);
 
+  //rotate the normal vector
+  let normal = new THREE.Vector3( normalx, normaly, 0);
+  normal.normalize();
+  normal.applyAxisAngle(rotNorm,turns*phi);
 
-  let twists = 1;
-  //rotate point about tangent axis
 
+  let res = [];
   if ( y == 0 ) {
     //add the offset rotation to the original point mapping
     res = [ point.x,
@@ -316,15 +316,17 @@ function toMobiusFromPlane(x,y,z) {
               ]
   //extruded geometry
   } else {
+
+    res = [     point.x +   y*normal.x,
+                point.y +   y*normal.y,
+                point.z +   y*normal.z
+              ]
     /*
-    let exn =
-    let exy =
-    let exz =
-    */
-    res = [     point.x + y*normalx/nnorm,
-                point.y + y*normaly/nnorm,
+    res = [     point.x + y*  normalx/nnorm,
+                point.y + y*  normaly/nnorm,
                 point.z
               ]
+              */
   }
   return res;
 }
