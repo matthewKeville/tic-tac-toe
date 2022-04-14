@@ -13,7 +13,8 @@ renderer.setSize(
 );
 renderer.sortObjects = false;
 
-document.body.appendChild( renderer.domElement );
+let container = document.getElementById("container");
+container.appendChild(renderer.domElement);
 
 const light = new THREE.AmbientLight( 0x404040);
 scene.add(light);
@@ -63,7 +64,7 @@ camera.lookAt(0,0);
 //////////////////////////////
 
 //spots must be perfect square
-let spr = 3; //spot base
+let spr = 9; //spot base
 let spots = spr**2; //total spots ( a square number )
 let granularity = 10; //determine resolution of individual spots
 let triangles = spots* (4**granularity) /2; //triangles per spot
@@ -218,6 +219,7 @@ scene.add(wframe);
 //these transformations depends on the assumption of the plane board being 
 //centered at the origin
 
+//z axis preserved
 function toCylinder(x,y,z) {
   //angle x maps to in cylinder
   // -xr/2 --- x --- xr/2 =>  3PI/2 ----- theta ----- -PI/2
@@ -258,6 +260,49 @@ function toCylinder(x,y,z) {
   }
   return res;
 }
+
+//x axis preserved
+function toAltCylinder(x,y,z) {
+  //angle x maps to in cylinder
+  // -xr/2 --- x --- xr/2 =>  3PI/2 ----- theta ----- -PI/2
+  let theta = (-z/zrange)*2*Math.PI + Math.PI/2;
+
+  let radius = (zrange/(2*Math.PI));
+  // C = 2*PI*r => r = C/(2*PI)
+  
+  //experimental
+  //since we wish to use this to map extruded geometry (tiles)
+  //we define a special case in the input space ( y != 0 )
+  //when this is the case, we modify the output vector by displacing it 
+  //that amount in the normal direction
+  
+  //as the planar surface has y = 0 , nonzero y's must be for transforming tiles
+
+  let tany = -radius*Math.sin(theta);
+  let tanz = radius*Math.cos(theta);
+
+  let normaly = tanz;
+  let normalz = -tany;
+
+  //normalize normal vector
+  let nnorm = Math.sqrt( normaly**2 +  normalz**2 );
+
+  let res = [];
+  if ( y == 0 ) {
+    res = [     x,
+                radius*Math.cos(theta),
+                radius*Math.sin(theta)
+              ]
+  //extruded geometry
+  } else {
+    res = [     x,
+                radius*Math.cos(theta) + y*normaly/nnorm,
+                radius*Math.sin(theta) + y*normalz/nnorm
+              ]
+  }
+  return res;
+}
+
 
 
 function toMobiusFromPlane(x,y,z) {
@@ -378,7 +423,7 @@ function toTorusFromCylinder(x,y,z) {
 
 
 
-
+//calculate different board forms
 
 
 const positions = boardGeom.attributes.position.array;
@@ -393,6 +438,9 @@ let S = positions.map((x) => x);
 // Cylinder Vertex data
 let SF_PC = positions.map((x) => x);
 
+// Alt cylinder vertex data
+let SF_PAC = positions.map((x) => x);
+
 // Torus Vertex data
 let SF_CT = positions.map((x) => x);
 
@@ -402,30 +450,40 @@ let SF_PM = positions.map((x) => x);
 // Calculate Cylinder vertex data by applying plane
 // to cylinder transformation
 for ( let i = 0; i < positions.length/3; i++) {
+  //cylinder
   let cyl = toCylinder(S[3*i],S[3*i +1],S[3*i+2]);
-  SF_PC[3*i] = cyl[0];
+  SF_PC[3*i]     = cyl[0];
   SF_PC[3*i + 1] = cyl[1];
   SF_PC[3*i + 2] = cyl[2];
-}
-
-
-// Calculate Mobius vertex data by applying plane
-// to mobius transformation
-for ( let i = 0; i < positions.length/3; i++) {
+  //alt cylinder
+  let altCyl = toAltCylinder(S[3*i],S[3*i +1],S[3*i+2]);
+  SF_PAC[3*i]     = altCyl[0];
+  SF_PAC[3*i + 1] = altCyl[1];
+  SF_PAC[3*i + 2] = altCyl[2];
+  //mobius
   let mob = toMobiusFromPlane(S[3*i],S[3*i +1],S[3*i+2]);
   SF_PM[3*i] = mob[0];
   SF_PM[3*i + 1] = mob[1];
   SF_PM[3*i + 2] = mob[2];
-}
-
-// Calculate Torus vertex data by applying cylinder
-// to plane transformation
-for ( let i = 0; i < positions.length/3; i++) {
+  //torus
   let tor = toTorusFromCylinder(SF_PC[3*i],SF_PC[3*i +1],SF_PC[3*i+2]);
   SF_CT[3*i] = tor[0];
   SF_CT[3*i + 1] = tor[1];
   SF_CT[3*i + 2] = tor[2];
+
 }
+
+
+
+boardMeshGeoCache = 
+  {
+    mesh        : boardMesh,
+    plane       : S,
+    cylinder    : SF_PC,
+    altCylinder : SF_PAC,
+    torus       : SF_CT,
+    mobius      : SF_PM
+  }
 
 
 //todo map of maps where
@@ -441,33 +499,40 @@ xPlanes.forEach( xp => {
   let pl = pos.map((x) => x);
 
   let cy = pos.map((x) => x);
+  let cyAlt = pos.map((x) => x);
+  let to = pos.map((x) => x);
+  let mo = pos.map((x) => x);
+
   for ( let i = 0; i < pos.length/3; i++) {
     let cyl = toCylinder(pos[3*i],pos[3*i +1],pos[3*i+2]);
+    //let alt = toCylinder(pos[3*i + 1],pos[3*i + 2],pos[3*i]);
     cy[3*i] = cyl[0];
     cy[3*i + 1] = cyl[1];
     cy[3*i + 2] = cyl[2];
-  }
+    //alt cylinder
+    let cylAlt = toAltCylinder(pos[3*i],pos[3*i +1],pos[3*i+2]);
+    cyAlt[3*i]     = cylAlt[0];
+    cyAlt[3*i + 1] = cylAlt[1];
+    cyAlt[3*i + 2] = cylAlt[2];
 
-  let to = pos.map((x) => x);
-  for ( let i = 0; i < pos.length/3; i++) {
     let tor = toTorusFromCylinder(cy[3*i],cy[3*i +1],cy[3*i+2]);
     to[3*i] = tor[0];
     to[3*i + 1] = tor[1];
     to[3*i + 2] = tor[2];
-  }
 
-  let mo = pos.map((x) => x);
-  for ( let i = 0; i < pos.length/3; i++) {
     let mob = toMobiusFromPlane(pos[3*i],pos[3*i +1],pos[3*i+2]);
     mo[3*i] = mob[0];
     mo[3*i + 1] = mob[1];
     mo[3*i + 2] = mob[2];
+
   }
+
 
   let cache = {
     mesh     : xp,
     plane    : pl,
     cylinder : cy,
+    altCylinder : cyAlt,
     torus    : to,
     mobius   : mo
 
@@ -477,333 +542,104 @@ xPlanes.forEach( xp => {
 });
 
 
-//hide xPlanes
+
+
+////////////////////////////
+// Transformation Animation 
+////////////////////////////
+
+
+//generic transformation prototype
+//mesh : the mesh to be transformed
+//S : domain vertex set
+//F : image  vertex set
+function genericTransform(t,mesh,S,F) {
+			for ( let i = 0; i < S.length/3; i++) {
+        
+        //find (x,y)'s point in starting image
+        let x = S[3*i];
+        let y = S[3*i + 1];
+        let z = S[3*i + 2];
+
+        //find (x,y)'s point in final image SF
+        let xf = F[3*i];
+        let yf = F[3*i + 1];
+        let zf = F[3*i + 2];
+
+        //interpolate a line between x,y,z and xf,yf,zf
+        //find distance vector
+        let xd = xf - x;
+        let yd = yf - y;
+        let zd = zf - z;
+
+        //draw distance vectors for debug perspective
+
+        let xn = x + ( (xd) * t);
+        let yn = y + ( (yd) * t);
+        let zn = z + ( (zd) * t);
+        mesh.geometry.attributes.position.array[3*i]     =  xn;
+        mesh.geometry.attributes.position.array[3*i + 1] =  yn;
+        mesh.geometry.attributes.position.array[3*i + 2] =  zn;
+      }
+
+      //flag the mesh to recalculate after transformation
+      mesh.geometry.attributes.position.needsUpdate = true;
+      mesh.geometry.computeBoundingSphere();
+      mesh.geometry.computeBoundingBox();
+}
+
+//target : { plane , cylinder , mobius , torus }
+function executeTransform(target,t) {
+  let tmp = xPlanesGeoCache.map((x) => x);
+  tmp.push(boardMeshGeoCache);
+  tmp.forEach( xp => {
+    genericTransform(t,xp.mesh,xp.mesh.geometry.attributes.position.array,xp[target]);
+  });
+}
+
 /*
-xPlanes.forEach( x => {
-  x.visible = false;
-});
+function goCylinder(t) {
+  //apply transform to board
+  genericTransform(t,boardMeshGeoCache.mesh,boardMeshGeoCache.plane,boardMeshGeoCache.cylinder);
+  //apply transform to spots
+  xPlanesGeoCache.forEach( xp => {
+    genericTransform(t,xp.mesh,xp.plane,xp.cylinder);
+  });
+}
+
+function goIdentity(t) {
+}
+
+function goMobius(t) {
+  //apply transform to board
+  genericTransform(t,boardMesh,S,SF_PM);
+  //apply transform to spots
+  xPlanesGeoCache.forEach( xp => {
+    genericTransform(t,xp.mesh,xp.plane,xp.mobius);
+  });
+}
+
+function goTorus(t) {
+  //apply transform to board
+  genericTransform(t,boardMesh,SF_PC,SF_CT);
+  //apply transform to spots
+  xPlanesGeoCache.forEach( xp => {
+    genericTransform(t,xp.mesh,xp.cylinder,xp.torus);
+  });
+}
 */
 
-
-//console.log(xPlanesGeoCache);
-
-
-
-// t : 0 to 1
-function cylinderTransform(t) {
-      //transform all points one time step
-			for ( let i = 0; i < positions.length/3; i++) {
-
-        //find (x,y)'s point in starting image
-        let x = S[3*i];
-        let y = S[3*i + 1];
-        let z = S[3*i + 2];
-
-        //find (x,y)'s point in final image SF
-        let xf = SF_PC[3*i];
-        let yf = SF_PC[3*i + 1];
-        let zf = SF_PC[3*i + 2];
-
-        //interpolate a line between x,y,z and xf,yf,zf
-          //find distance vector
-          let xd = xf - x;
-          let yd = yf - y;
-          let zd = zf - z;
-          //draw distance vectors for debug perspective
-          /*
-          var xgeo = new THREE.BufferGeometry();
-          var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-          xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-          var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-          var line = new THREE.Line( xgeo , matx );
-          scene.add(line);
-          */
-
-          let xn = x + ( (xd) * t);
-          let yn = y + ( (yd) * t);
-          let zn = z + ( (zd) * t);
-          positions[3*i]     =  xn;
-          positions[3*i + 1] =  yn;
-          positions[3*i + 2] =  zn;
-
-
-      }
-
-      xPlanesGeoCache.forEach( xp => {
-
-        for ( let i = 0; i < xp.mesh.geometry.attributes.position.array.length/3; i++) {
-
-          //find (x,y)'s point in starting image
-          let x = xp.plane[3*i];
-          let y = xp.plane[3*i + 1];
-          let z = xp.plane[3*i + 2];
-
-          //find (x,y)'s point in final image SF
-          let xf = xp.cylinder[3*i];
-          let yf = xp.cylinder[3*i + 1];
-          let zf = xp.cylinder[3*i + 2];
-
-          //interpolate a line between x,y,z and xf,yf,zf
-            //find distance vector
-            let xd = xf - x;
-            let yd = yf - y;
-            let zd = zf - z;
-
-            //draw distance vectors for debug perspective
-            /*
-            var xgeo = new THREE.BufferGeometry();
-            var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-            xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-            var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-            var line = new THREE.Line( xgeo , matx );
-            scene.add(line);
-            */
-
-            let xn = x + ( (xd) * t);
-            let yn = y + ( (yd) * t);
-            let zn = z + ( (zd) * t);
-            xp.mesh.geometry.attributes.position.array[3*i]     =  xn;
-            xp.mesh.geometry.attributes.position.array[3*i + 1] =  yn;
-            xp.mesh.geometry.attributes.position.array[3*i + 2] =  zn;
-
-
-        }
-
-        xp.mesh.geometry.computeBoundingSphere();
-        xp.mesh.geometry.computeBoundingBox();
-        xp.mesh.geometry.attributes.position.needsUpdate = true;
-      });
-
-
-      /*
-      //experiment for transforming o00 at the same time
-      for ( let i = 0; i < x_S.length/3; i++) {
-
-        //find (x,y)'s point in starting image
-        let x = x_S[3*i];
-        let y = x_S[3*i + 1];
-        let z = x_S[3*i + 2];
-
-        //find (x,y)'s point in final image SF
-        let xf = x_S_PC[3*i];
-        let yf = x_S_PC[3*i + 1];
-        let zf = x_S_PC[3*i + 2];
-
-        //interpolate a line between x,y,z and xf,yf,zf
-          //find distance vector
-          let xd = xf - x;
-          let yd = yf - y;
-          let zd = zf - z;
-          //draw distance vectors for debug perspective
-          var xgeo = new THREE.BufferGeometry();
-          var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-          xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-          var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-          var line = new THREE.Line( xgeo , matx );
-          scene.add(line);
-
-          let xn = x + ( (xd) * t);
-          let yn = y + ( (yd) * t);
-          let zn = z + ( (zd) * t);
-          xPlane.geometry.attributes.position.array[3*i]     =  xn;
-          xPlane.geometry.attributes.position.array[3*i + 1] =  yn;
-          xPlane.geometry.attributes.position.array[3*i + 2] =  zn;
-
-
-      }
-
-      xPlane.geometry.attributes.position.needsUpdate = true;
-      */
+/*
+function goTorusFromMobius(t) {
+  //apply transform to board
+  genericTransform(t,boardMesh,SF_PM,SF_CT);
+  console.log("main done");
+  //apply transform to spots
+  xPlanesGeoCache.forEach( xp => {
+    genericTransform(t,xp.mesh,xp.mobius,xp.torus);
+  });
 }
-
-function identity(t) {
-}
-
-
-// t : 0 to 1
-function torusTransform(t) {
-      //transform all points one time step
-			for ( let i = 0; i < positions.length/3; i++) {
-      
-        /* 
-        let x = positions[3*i];
-        let y = positions[3*i + 1];
-        let z = positions[3*i + 2];
-        */
-
-        //find (x,y)'s point in starting image
-        let x = SF_PC[3*i];
-        let y = SF_PC[3*i + 1];
-        let z = SF_PC[3*i + 2];
-
-        //find (x,y)'s point in final image SF
-        let xf = SF_CT[3*i];
-        let yf = SF_CT[3*i + 1];
-        let zf = SF_CT[3*i + 2];
-
-        //interpolate a line between x,y,z and xf,yf,zf
-          //find distance vector
-          let xd = xf - x;
-          let yd = yf - y;
-          let zd = zf - z;
-          //draw distance vectors for debug perspective
-          /*
-          var xgeo = new THREE.BufferGeometry();
-          var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-          xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-          var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-          var line = new THREE.Line( xgeo , matx );
-          scene.add(line);
-          */
-
-          let xn = x + ( (xd) * t);
-          let yn = y + ( (yd) * t);
-          let zn = z + ( (zd) * t);
-          positions[3*i]     =  xn;
-          positions[3*i + 1] =  yn;
-          positions[3*i + 2] =  zn;
-
-      }
-
-
-      xPlanesGeoCache.forEach( xp => {
-
-        for ( let i = 0; i < xp.mesh.geometry.attributes.position.array.length/3; i++) {
-
-          //find (x,y)'s point in starting image
-          let x = xp.cylinder[3*i];
-          let y = xp.cylinder[3*i + 1];
-          let z = xp.cylinder[3*i + 2];
-
-          //find (x,y)'s point in final image SF
-          let xf = xp.torus[3*i];
-          let yf = xp.torus[3*i + 1];
-          let zf = xp.torus[3*i + 2];
-
-          //interpolate a line between x,y,z and xf,yf,zf
-            //find distance vector
-            let xd = xf - x;
-            let yd = yf - y;
-            let zd = zf - z;
-
-            //draw distance vectors for debug perspective
-            /*
-            var xgeo = new THREE.BufferGeometry();
-            var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-            xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-            var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-            var line = new THREE.Line( xgeo , matx );
-            scene.add(line);
-            */
-
-            let xn = x + ( (xd) * t);
-            let yn = y + ( (yd) * t);
-            let zn = z + ( (zd) * t);
-            xp.mesh.geometry.attributes.position.array[3*i]     =  xn;
-            xp.mesh.geometry.attributes.position.array[3*i + 1] =  yn;
-            xp.mesh.geometry.attributes.position.array[3*i + 2] =  zn;
-
-
-        }
-
-        xp.mesh.geometry.attributes.position.needsUpdate = true;
-        xp.mesh.geometry.computeBoundingSphere();
-        xp.mesh.geometry.computeBoundingBox();
-      });
-
-}
-
-
-
-
-// t : 0 to 1
-function mobiusTransform(t) {
-      //transform all points one time step
-			for ( let i = 0; i < positions.length/3; i++) {
-      
-        //find (x,y)'s point in starting image
-        let x = S[3*i];
-        let y = S[3*i + 1];
-        let z = S[3*i + 2];
-
-        //find (x,y)'s point in final image SF
-        let xf = SF_PM[3*i];
-        let yf = SF_PM[3*i + 1];
-        let zf = SF_PM[3*i + 2];
-
-        //interpolate a line between x,y,z and xf,yf,zf
-          //find distance vector
-          let xd = xf - x;
-          let yd = yf - y;
-          let zd = zf - z;
-          //draw distance vectors for debug perspective
-          /*
-          var xgeo = new THREE.BufferGeometry();
-          var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-          xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-          var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-          var line = new THREE.Line( xgeo , matx );
-          scene.add(line);
-          */
-
-          let xn = x + ( (xd) * t);
-          let yn = y + ( (yd) * t);
-          let zn = z + ( (zd) * t);
-          positions[3*i]     =  xn;
-          positions[3*i + 1] =  yn;
-          positions[3*i + 2] =  zn;
-
-      }
-
-
-      xPlanesGeoCache.forEach( xp => {
-
-        for ( let i = 0; i < xp.mesh.geometry.attributes.position.array.length/3; i++) {
-
-          //find (x,y)'s point in starting image
-          let x = xp.plane[3*i];
-          let y = xp.plane[3*i + 1];
-          let z = xp.plane[3*i + 2];
-
-          //find (x,y)'s point in final image SF
-          let xf = xp.mobius[3*i];
-          let yf = xp.mobius[3*i + 1];
-          let zf = xp.mobius[3*i + 2];
-
-          //interpolate a line between x,y,z and xf,yf,zf
-            //find distance vector
-            let xd = xf - x;
-            let yd = yf - y;
-            let zd = zf - z;
-
-            //draw distance vectors for debug perspective
-            /*
-            var xgeo = new THREE.BufferGeometry();
-            var xpos = Float32Array.from([x,y,z,xf,yf,zf]);
-            xgeo.setAttribute('position' , new THREE.BufferAttribute(xpos , 3));
-            var matx = new THREE.LineBasicMaterial( { color: 0xf0fff0 } );
-            var line = new THREE.Line( xgeo , matx );
-            scene.add(line);
-            */
-
-            let xn = x + ( (xd) * t);
-            let yn = y + ( (yd) * t);
-            let zn = z + ( (zd) * t);
-            xp.mesh.geometry.attributes.position.array[3*i]     =  xn;
-            xp.mesh.geometry.attributes.position.array[3*i + 1] =  yn;
-            xp.mesh.geometry.attributes.position.array[3*i + 2] =  zn;
-
-
-        }
-
-        xp.mesh.geometry.attributes.position.needsUpdate = true;
-        xp.mesh.geometry.computeBoundingSphere();
-        xp.mesh.geometry.computeBoundingBox();
-      });
-
-}
-
-
+*/
 
 
 
@@ -823,62 +659,6 @@ function mouseMove(event) {
 window.onmousemove = mouseMove;
 
 
-
-///////////////////////
-//Interactation hookup
-///////////////////////
-
-let turn = 0;
-let playerOne = 0xff0000; //x
-let playerTwo = 0x000000; //o
-window.onkeydown = function (key) {
-  //cycle transformation
-  //spacebar
-  if (key.keyCode === 32) {
-    if ( ti == tsteps ) {
-      ti = 0;
-      let tci = transformCycle[transformIndex];
-      transform = tci.kind;
-      dir = tci.dir;
-      transformIndex = (transformIndex + 1) % transformCycle.length;
-    }
-  }
-  if(key.keyCode === 13) {
-    console.log("enter hit");
-
-    raycaster.setFromCamera( pointer , camera);
-    let intersections = raycaster.intersectObjects( scene.children );
-    /*
-    for ( let i = 0; i < intersections.length; i++) {
-      console.log( intersections[i]);
-    }
-    */
-    let firstHit = intersections[0];
-    console.log(intersections);
-    console.log(firstHit);
-    //determine if a spot was hit by referencing the uuids in the 
-    //xPlanes list
-    if ((firstHit) && firstHit.distance != 0) {
-      if ( (xPlanes.map(x => x.uuid )).includes(firstHit.object.uuid) )
-      {
-        let spotIndex = xPlanes.indexOf(firstHit.object);
-        if (boardModel[spotIndex]==null) {
-        //alternate the color 
-        let player = ( turn == 0 ? playerOne : playerTwo ); 
-        firstHit.object.material.color = new THREE.Color(player);
-        //update the model to reflect this move
-        console.log(spotIndex);
-        //boardModel
-        boardModel[spotIndex] = (turn == 0 ? "x" : "o" );
-        turn = (turn + 1) % 2;
-        logicalBoardPrint();
-        } else {
-          console.warn("This spot is already taken");
-        }
-      }
-    }
-  }
-}
 
 function logicalBoardPrint() {
   let res = ""
@@ -903,29 +683,23 @@ let ti = 0;
 let tsteps = 20;
 let lastStep = performance.now();
 let dir = 1;
-let transformCycle = [ 
-  { kind : mobiusTransform    , dir: 1 },
-  { kind : mobiusTransform    , dir: -1},
-  { kind : cylinderTransform , dir: 1 },
-  { kind : cylinderTransform , dir: -1 },
-  /*
-  { kind : torusTransform    , dir: 1 },
-  { kind : torusTransform    , dir: -1},
-  { kind : cylinderTransform , dir: -1},
-  */
+
+let transforms = [ 
+  "mobius",
+  "plane",
+  "altCylinder",
+  "cylinder",
+  "torus",
+  "plane"
 ];
 
 
-//let transformCycle = [ { kind : identity , dir: 1} ];
-let transformIndex = 0;
-let transform = identity;
-
+let transform = "plane";
 
 function animate() {
   requestAnimationFrame( animate );
   if ( performance.now() > lastStep + 75 ) {
-
-      transform( (dir==1) ? ti/tsteps : 1 - (ti/tsteps) );
+      executeTransform(transform,ti/tsteps);
       boardGeom.attributes.position.needsUpdate = true;
       console.log(ti);
       lastStep = performance.now();
@@ -933,11 +707,98 @@ function animate() {
     if ( ti < tsteps) {
         ti++;
     } else {
+
     }
 	renderer.render( scene, camera );
 
   }
 }
+
+
+///////////////////////
+//Interactation hookup
+///////////////////////
+
+let planeButton = document.getElementById("planeButton");
+planeButton.onclick = function () {
+  transform = "plane";
+  ti = 0;
+}
+
+
+let cylinderButton = document.getElementById("cylinderButton");
+cylinderButton.onclick = function () {
+  transform = "cylinder";
+  ti = 0;
+}
+
+let altCylinderButton = document.getElementById("altCylinderButton");
+altCylinderButton.onclick = function () {
+  transform = "altCylinder";
+  ti = 0;
+}
+
+
+let mobiusButton = document.getElementById("mobiusButton");
+mobiusButton.onclick = function () {
+  transform = "mobius";
+  ti = 0;
+}
+
+let torusButton = document.getElementById("torusButton");
+torusButton.onclick = function () {
+  transform = "torus";
+  ti = 0;
+}
+
+
+
+
+
+let turn = 0;
+let playerOne = 0xff0000; //x
+let playerTwo = 0x000000; //o
+window.onkeydown = function (key) {
+  //cycle transformation
+  //spacebar
+  if (key.keyCode === 32) {
+  }
+
+  if(key.keyCode === 13) {
+    console.log("enter hit");
+
+    raycaster.setFromCamera( pointer , camera);
+    let intersections = raycaster.intersectObjects( scene.children );
+    /*
+    for ( let i = 0; i < intersections.length; i++) {
+      console.log( intersections[i]);
+    }
+    */
+    let firstHit = intersections[0];
+    //determine if a spot was hit by referencing the uuids in the 
+    //xPlanes list
+    if ((firstHit) && firstHit.distance != 0) {
+      if ( (xPlanes.map(x => x.uuid )).includes(firstHit.object.uuid) )
+      {
+        let spotIndex = xPlanes.indexOf(firstHit.object);
+        if (boardModel[spotIndex]==null) {
+        //alternate the color 
+        let player = ( turn == 0 ? playerOne : playerTwo ); 
+        firstHit.object.material.color = new THREE.Color(player);
+        //update the model to reflect this move
+        //boardModel
+        boardModel[spotIndex] = (turn == 0 ? "x" : "o" );
+        turn = (turn + 1) % 2;
+        logicalBoardPrint();
+        } else {
+          console.warn("This spot is already taken");
+        }
+      }
+    }
+  }
+}
+
+
 
 animate();
 

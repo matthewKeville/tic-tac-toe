@@ -1,0 +1,38 @@
+#container {
+  position : relative;
+  margin : 0;
+  padding : 0;
+  border : 0;
+}
+
+#toposMenu {
+  position: absolute;
+  left: 2.5%;
+  top: 2.5%;
+  width:10%;
+  height:30%;
+  background-color: red;
+  color : blue;
+  z-index: 2;
+  opacity: 1;
+}
+
+#key {
+  position: absolute;
+  left: 12.5%;
+  top: 2.5%;
+  width:3%;
+  height:4%;
+  background-color: green;
+  color : white;
+  z-index: 2;
+  opacity: 1;
+}
+
+
+button {
+  font-size: 36px;
+  background-color: white;
+  color : blue;
+  display: block;
+}
